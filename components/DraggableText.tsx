@@ -12,7 +12,17 @@ interface DraggableTextProps {
 }
 
 export const DraggableText: React.FC<DraggableTextProps> = ({ id, initialX, initialY, initialContent, zoom, onRemove, onUpdate }) => {
-  const [position, setPosition] = useState({ x: initialX, y: initialY });
+  const [position, setPosition] = useState({ x: initialX ?? 50, y: initialY ?? 200 });
+  const positionRef = useRef({ x: initialX ?? 50, y: initialY ?? 200 });
+
+  // Sync with prop changes
+  useEffect(() => {
+    const x = initialX ?? 50;
+    const y = initialY ?? 200;
+    setPosition({ x, y });
+    positionRef.current = { x, y };
+  }, [initialX, initialY]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isSelected, setIsSelected] = useState(false);
@@ -35,10 +45,12 @@ export const DraggableText: React.FC<DraggableTextProps> = ({ id, initialX, init
       const dx = (e.clientX - dragStartRef.current.x) / zoom;
       const dy = (e.clientY - dragStartRef.current.y) / zoom;
 
-      setPosition(prev => ({
-        x: prev.x + dx,
-        y: prev.y + dy
-      }));
+      const newPos = {
+        x: positionRef.current.x + dx,
+        y: positionRef.current.y + dy
+      };
+      positionRef.current = newPos;
+      setPosition(newPos);
 
       dragStartRef.current = { x: e.clientX, y: e.clientY };
     };
@@ -51,10 +63,12 @@ export const DraggableText: React.FC<DraggableTextProps> = ({ id, initialX, init
       const dx = (touch.clientX - dragStartRef.current.x) / zoom;
       const dy = (touch.clientY - dragStartRef.current.y) / zoom;
 
-      setPosition(prev => ({
-        x: prev.x + dx,
-        y: prev.y + dy
-      }));
+      const newPos = {
+        x: positionRef.current.x + dx,
+        y: positionRef.current.y + dy
+      };
+      positionRef.current = newPos;
+      setPosition(newPos);
 
       dragStartRef.current = { x: touch.clientX, y: touch.clientY };
     };
@@ -64,8 +78,8 @@ export const DraggableText: React.FC<DraggableTextProps> = ({ id, initialX, init
       dragStartRef.current = null;
       if (onUpdate) {
         onUpdate(id, {
-          x: position.x,
-          y: position.y,
+          x: positionRef.current.x,
+          y: positionRef.current.y,
           content: contentRef.current?.innerHTML || ''
         });
       }
@@ -98,7 +112,7 @@ export const DraggableText: React.FC<DraggableTextProps> = ({ id, initialX, init
       window.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [isDragging, zoom]);
+  }, [isDragging, zoom, id, onUpdate]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();

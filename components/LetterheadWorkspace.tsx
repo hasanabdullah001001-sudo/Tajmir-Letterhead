@@ -206,6 +206,7 @@ export const LetterheadWorkspace = forwardRef<HTMLDivElement, WorkspaceProps>(({
             )}
 
             <TajmirPage
+              key={id}
               id={id}
               pageNumber={index + 1}
               zoom={zoom}

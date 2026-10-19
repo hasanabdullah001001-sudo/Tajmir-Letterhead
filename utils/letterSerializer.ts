@@ -82,9 +82,9 @@ export function loadLetterToLocalStorage(letter: SavedLetter): void {
 
     // Set page content
     letter.pages.forEach((page) => {
-        localStorage.setItem(`tajmir_doc_body_${page.pageId}`, page.bodyContent);
-        localStorage.setItem(`tajmir_doc_draggables_text_${page.pageId}`, JSON.stringify(page.textBlocks));
-        localStorage.setItem(`tajmir_doc_draggables_img_${page.pageId}`, JSON.stringify(page.imageBlocks));
+        localStorage.setItem(`tajmir_doc_body_${page.pageId}`, page.bodyContent || '');
+        localStorage.setItem(`tajmir_doc_draggables_text_${page.pageId}`, JSON.stringify(page.textBlocks || []));
+        localStorage.setItem(`tajmir_doc_draggables_img_${page.pageId}`, JSON.stringify(page.imageBlocks || []));
     });
 
     // Set shared header content

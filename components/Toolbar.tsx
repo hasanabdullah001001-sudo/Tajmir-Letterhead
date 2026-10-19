@@ -28,6 +28,7 @@ interface ToolbarProps {
   onNewPage: () => void;
   onAddText: () => void;
   onAddImage: (file: File) => void;
+  onOpenImageModal?: () => void;
   isProcessing: boolean;
   margins: Margins;
   onSetMargins: (m: Margins) => void;
@@ -48,6 +49,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onNewPage,
   onAddText,
   onAddImage,
+  onOpenImageModal,
   isProcessing,
   margins,
   onSetMargins,
@@ -136,7 +138,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="hidden sm:inline">Text</span>
           </button>
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={onOpenImageModal || (() => fileInputRef.current?.click())}
             className="flex items-center justify-center gap-1 bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-800 px-2 py-1.5 rounded-md text-xs font-semibold shadow-sm cursor-pointer"
             title="Add Image"
           >

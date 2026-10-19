@@ -8,6 +8,7 @@ import { Toast } from './Toast';
 import { MergeManager } from './MergeManager';
 import { SaveLetterDialog } from './SaveLetterDialog';
 import { LetterListDialog } from './LetterListDialog';
+import { ImageGalleryDialog } from './ImageGalleryDialog';
 import { letterService } from '../services/LetterService';
 import { serializeCurrentLetter, loadLetterToLocalStorage } from '../utils/letterSerializer';
 
@@ -16,6 +17,7 @@ export function EditorMode() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showMergeManager, setShowMergeManager] = useState(false);
+  const [showImageGallery, setShowImageGallery] = useState(false);
 
   // Generic Action State used to communicate from Toolbar to Workspace
   const [action, setAction] = useState<{ type: string; payload?: any } | null>(null);
@@ -66,6 +68,11 @@ export function EditorMode() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleSelectGalleryImage = (src: string) => {
+    setAction({ type: 'ADD_IMAGE', payload: src });
+    showToast("Image added to page");
   };
 
   const showToast = (msg: string) => {
@@ -260,6 +267,7 @@ export function EditorMode() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLetterList, setShowLetterList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savedShareModal, setSavedShareModal] = useState<{ url: string; name: string; copied: boolean } | null>(null);
 
   const handleSaveLetter = async (letterName: string) => {
     setIsSaving(true);
@@ -267,13 +275,18 @@ export function EditorMode() {
       const letterData = serializeCurrentLetter(letterName);
       const saved = await letterService.saveLetter(letterData);
 
-      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+      const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
       const shareLink = `${appUrl}/view/${saved.letterId}`;
 
       setShowSaveDialog(false);
-      alert(`Letter saved!\n\nShareable link:\n${shareLink}`);
+      navigator.clipboard.writeText(shareLink).catch(() => {});
+      setSavedShareModal({
+        url: shareLink,
+        name: letterName,
+        copied: true
+      });
     } catch (err) {
-      alert('Failed to save letter. Make sure your Worker is deployed.');
+      showToast('Failed to save letter. Make sure your Worker is deployed.');
     } finally {
       setIsSaving(false);
     }
@@ -286,7 +299,7 @@ export function EditorMode() {
       setShowLetterList(false);
       window.location.reload(); // Reload to apply loaded data
     } catch (err) {
-      alert('Failed to load letter');
+      showToast('Failed to load letter');
     }
   };
 
@@ -303,6 +316,7 @@ export function EditorMode() {
         onNewPage={handleNewPage}
         onAddText={handleAddText}
         onAddImage={handleAddImage}
+        onOpenImageModal={() => setShowImageGallery(true)}
         isProcessing={isProcessing}
         margins={margins}
         onSetMargins={setMargins}
@@ -331,6 +345,12 @@ export function EditorMode() {
         />
       )}
 
+      <ImageGalleryDialog
+        isOpen={showImageGallery}
+        onClose={() => setShowImageGallery(false)}
+        onSelectImage={handleSelectGalleryImage}
+      />
+
       <SaveLetterDialog
         isOpen={showSaveDialog}
         onClose={() => setShowSaveDialog(false)}
@@ -343,6 +363,74 @@ export function EditorMode() {
         onClose={() => setShowLetterList(false)}
         onLoad={handleLoadLetter}
       />
+
+      {/* ================= WEB POPUP: SAVED LETTER SHARE LINK ================= */}
+      {savedShareModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-gray-100">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-emerald-100 text-emerald-700 rounded-lg text-base">🎉</span>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800">Letter Saved Successfully</h3>
+                  <p className="text-xs text-gray-500 truncate max-w-[240px]">{savedShareModal.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSavedShareModal(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="my-4">
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg text-xs font-medium mb-3">
+                <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Shareable link copied to clipboard!
+              </div>
+
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={savedShareModal.url}
+                  className="bg-transparent border-none text-xs text-gray-700 flex-1 outline-none font-mono selection:bg-blue-100"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(savedShareModal.url);
+                    setSavedShareModal({ ...savedShareModal, copied: true });
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors flex items-center gap-1 flex-shrink-0"
+                >
+                  {savedShareModal.copied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <a
+                href={savedShareModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1"
+              >
+                Open Link ↗
+              </a>
+              <button
+                onClick={() => setSavedShareModal(null)}
+                className="px-4 py-2 text-xs font-semibold text-white bg-gray-800 hover:bg-gray-900 rounded-lg transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

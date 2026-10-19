@@ -24,9 +24,36 @@ interface DraggableImageProps {
 export const DraggableImage: React.FC<DraggableImageProps> = ({
   id, src, initialX, initialY, initialWidth, initialHeight, initialCrop, zoom, onRemove, onUpdate
 }) => {
-  const [position, setPosition] = useState({ x: initialX, y: initialY });
+  const [position, setPosition] = useState({ x: initialX ?? 50, y: initialY ?? 200 });
   const [size, setSize] = useState({ width: initialWidth || 200, height: initialHeight || 200 });
   const [processedSrc, setProcessedSrc] = useState(src);
+
+  const positionRef = useRef({ x: initialX ?? 50, y: initialY ?? 200 });
+  const sizeRef = useRef({ width: initialWidth || 200, height: initialHeight || 200 });
+  const cropRef = useRef(initialCrop || { t: 0, r: 0, b: 0, l: 0 });
+  const processedSrcRef = useRef(src);
+
+  // Sync with prop changes (e.g. when loading a letter from database)
+  useEffect(() => {
+    const x = initialX ?? 50;
+    const y = initialY ?? 200;
+    setPosition({ x, y });
+    positionRef.current = { x, y };
+  }, [initialX, initialY]);
+
+  useEffect(() => {
+    if (initialWidth && initialHeight) {
+      setSize({ width: initialWidth, height: initialHeight });
+      sizeRef.current = { width: initialWidth, height: initialHeight };
+    }
+  }, [initialWidth, initialHeight]);
+
+  useEffect(() => {
+    if (initialCrop) {
+      setCrop(initialCrop);
+      cropRef.current = initialCrop;
+    }
+  }, [initialCrop]);
 
   // Controls state
   const [showMagic, setShowMagic] = useState(false);
@@ -48,12 +75,16 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
   useEffect(() => {
     originalImageRef.current.src = src;
     originalImageRef.current.crossOrigin = "anonymous";
-    // Auto-set aspect ratio?
+    // Auto-set aspect ratio only if initialHeight was not explicitly set
     originalImageRef.current.onload = () => {
       const ar = originalImageRef.current.naturalWidth / originalImageRef.current.naturalHeight;
-      if (ar) setSize(prev => ({ ...prev, height: prev.width / ar }));
+      if (ar && !initialHeight) {
+        const newH = sizeRef.current.width / ar;
+        sizeRef.current = { ...sizeRef.current, height: newH };
+        setSize(prev => ({ ...prev, height: newH }));
+      }
     };
-  }, [src]);
+  }, [src, initialHeight]);
 
   // Process Image (Signature "Air" Mode)
   useEffect(() => {
@@ -101,7 +132,12 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
       if (isDragging) {
         const dx = (e.clientX - dragStartRef.current.x) / zoom;
         const dy = (e.clientY - dragStartRef.current.y) / zoom;
-        setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+        const newPos = {
+          x: positionRef.current.x + dx,
+          y: positionRef.current.y + dy
+        };
+        positionRef.current = newPos;
+        setPosition(newPos);
         dragStartRef.current = { x: e.clientX, y: e.clientY };
       } else if (isResizing && startDimRef.current) {
         const dx = (e.clientX - dragStartRef.current.x) / zoom;
@@ -120,7 +156,9 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
           }
         }
 
-        setSize({ width: newWidth, height: newHeight });
+        const newSize = { width: newWidth, height: newHeight };
+        sizeRef.current = newSize;
+        setSize(newSize);
       }
     };
 
@@ -136,7 +174,12 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
       if (isDragging) {
         const dx = (touch.clientX - dragStartRef.current.x) / zoom;
         const dy = (touch.clientY - dragStartRef.current.y) / zoom;
-        setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+        const newPos = {
+          x: positionRef.current.x + dx,
+          y: positionRef.current.y + dy
+        };
+        positionRef.current = newPos;
+        setPosition(newPos);
         dragStartRef.current = { x: touch.clientX, y: touch.clientY };
       } else if (isResizing && startDimRef.current) {
         const dx = (touch.clientX - dragStartRef.current.x) / zoom;
@@ -154,7 +197,9 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
           }
         }
 
-        setSize({ width: newWidth, height: newHeight });
+        const newSize = { width: newWidth, height: newHeight };
+        sizeRef.current = newSize;
+        setSize(newSize);
       }
     };
 
@@ -164,15 +209,15 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
       dragStartRef.current = null;
       startDimRef.current = null;
 
-      // Notify parent of update
+      // Notify parent of update with true latest coordinates and dimensions
       if (onUpdate) {
         onUpdate(id, {
-          x: position.x,
-          y: position.y,
-          width: size.width,
-          height: size.height,
-          crop,
-          src: processedSrc // If we want to save magical changes
+          x: positionRef.current.x,
+          y: positionRef.current.y,
+          width: sizeRef.current.width,
+          height: sizeRef.current.height,
+          crop: cropRef.current,
+          src: processedSrcRef.current
         });
       }
     };
@@ -205,7 +250,7 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
       window.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [isDragging, isResizing, zoom, lockAspect]);
+  }, [isDragging, isResizing, zoom, lockAspect, id, onUpdate]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -217,18 +262,6 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      // Handle High DPI
-      const dpr = window.devicePixelRatio || 1;
-      // We align canvas size to the container size
-      // We need to measure the container or trust the css w/h?
-      // Since size is controlled by 'size' state:
-      canvas.width = size.width * zoom * dpr; // Actually canvas is inside the scaled container? 
-      // Wait, 'size' is the CSS size. The canvas is w-full h-full.
-      // We should use clientWidth from the element itself if possible, but it might be 0 if hidden?
-      // Let's rely on 'size' state.
-
-      // Best approach: set canvas dims to match natural image aspect or container aspect?
-      // CSS handles display size. We set internal resolution.
       canvas.width = size.width * 2;
       canvas.height = size.height * 2;
 
@@ -249,20 +282,21 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
     img.src = processedSrc;
   }, [processedSrc, crop, size, zoom]);
 
-  // Notify parent when crop or processedSrc changes (debounced or effect?)
-  // Since crop changes via input, we should update parent.
-  useEffect(() => {
-    if (onUpdate && (crop.t !== 0 || crop.r !== 0 || crop.b !== 0 || crop.l !== 0 || processedSrc !== src)) {
+  const handleCropChange = (side: string, val: number) => {
+    const newCrop = { ...cropRef.current, [side]: val };
+    cropRef.current = newCrop;
+    setCrop(newCrop);
+    if (onUpdate) {
       onUpdate(id, {
-        x: position.x,
-        y: position.y,
-        width: size.width,
-        height: size.height,
-        crop,
-        src: processedSrc
+        x: positionRef.current.x,
+        y: positionRef.current.y,
+        width: sizeRef.current.width,
+        height: sizeRef.current.height,
+        crop: newCrop,
+        src: processedSrcRef.current
       });
     }
-  }, [crop, processedSrc]); // position/size handled in handleEnd to avoid spam
+  };
 
   // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -277,7 +311,7 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
     e.preventDefault();
     setIsResizing(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY };
-    startDimRef.current = { w: size.width, h: size.height, x: position.x, y: position.y };
+    startDimRef.current = { w: sizeRef.current.width, h: sizeRef.current.height, x: positionRef.current.x, y: positionRef.current.y };
   };
 
   // Touch Handlers
@@ -293,7 +327,7 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
     setIsResizing(true);
     const touch = e.touches[0];
     dragStartRef.current = { x: touch.clientX, y: touch.clientY };
-    startDimRef.current = { w: size.width, h: size.height, x: position.x, y: position.y };
+    startDimRef.current = { w: sizeRef.current.width, h: sizeRef.current.height, x: positionRef.current.x, y: positionRef.current.y };
   };
 
   const handleContainerClick = (e: React.MouseEvent | React.TouchEvent) => {
@@ -398,7 +432,7 @@ export const DraggableImage: React.FC<DraggableImageProps> = ({
                     min="0"
                     max="50"
                     value={crop[side.toLowerCase()[0] as keyof typeof crop]}
-                    onChange={e => setCrop({ ...crop, [side.toLowerCase()[0]]: Number(e.target.value) })}
+                    onChange={e => handleCropChange(side.toLowerCase()[0], Number(e.target.value))}
                     className="bg-gray-800 border-none text-white rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-green-500"
                   />
                 </div>

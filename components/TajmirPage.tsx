@@ -1,6 +1,7 @@
-﻿import React, { forwardRef, useState, useEffect, useRef } from 'react';
+import React, { forwardRef, useState, useEffect, useRef } from 'react';
 import { DraggableText } from './DraggableText';
 import { DraggableImage } from './DraggableImage';
+import { TajmirLogo } from './TajmirLogo';
 
 interface Margins {
   top: number;
@@ -32,30 +33,16 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
   onFocus,
   maxLines
 }, ref) => {
-  // Logo Options
-  const LOGO_OPTIONS = [
-    '/tajmir-header-new.png',
-    '/tajmir-header-opt2.png',
-    '/tajmir-header-opt3.png'
-  ];
-
-  // Header Logo State - Global persistence across pages? 
-  // Ideally this should be shared, but since TajmirPage is individual, we use localStorage to sync on mount/update.
+  // Header Logo State - Global persistence across pages
   const [logoIndex, setLogoIndex] = useState(() => {
     const saved = localStorage.getItem('tajmir_header_logo_index');
     return saved ? parseInt(saved, 10) : 0;
   });
 
   const handleHeaderClick = () => {
-    const nextIndex = (logoIndex + 1) % LOGO_OPTIONS.length;
+    const nextIndex = (logoIndex + 1) % 3;
     setLogoIndex(nextIndex);
     localStorage.setItem('tajmir_header_logo_index', nextIndex.toString());
-    // Note: This won't automatically update other pages until they re-render or listen to storage. 
-    // Since pages are usually mounted together, we might want a way to force update?
-    // For now, simple state local to component but persisted is fine. 
-    // If the user clicks on Page 1, Page 2 won't update instantly unless we lift state.
-    // Given the request "remember users last chose", persistence is key.
-    // To sync instantly, we can dispatch a custom event or use window listener.
     window.dispatchEvent(new Event('tajmir_logo_change'));
   };
 
@@ -69,9 +56,26 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
     return () => window.removeEventListener('tajmir_logo_change', handleStorageChange);
   }, []);
 
-  // Draggable State - Local to each page for now
-  const [textBlocks, setTextBlocks] = useState<Array<{ id: number, x: number, y: number, content?: string }>>([]);
-  const [imageBlocks, setImageBlocks] = useState<Array<{ id: number, src: string, x: number, y: number, width?: number, height?: number, crop?: any }>>([]);
+  // Draggable State - initialized lazily from localStorage so blocks exist on the very first render!
+  const [textBlocks, setTextBlocks] = useState<Array<{ id: number, x: number, y: number, content?: string }>>(() => {
+    try {
+      const savedTextBlocks = localStorage.getItem(`tajmir_doc_draggables_text_${id}`);
+      return savedTextBlocks ? JSON.parse(savedTextBlocks) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [imageBlocks, setImageBlocks] = useState<Array<{ id: number, src: string, x: number, y: number, width?: number, height?: number, crop?: any }>>(() => {
+    try {
+      const savedImageBlocks = localStorage.getItem(`tajmir_doc_draggables_img_${id}`);
+      return savedImageBlocks ? JSON.parse(savedImageBlocks) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const isLoadedRef = useRef(false);
 
   // Refs for persistent content
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -80,7 +84,7 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
   const footerTitleRef = useRef<HTMLHeadingElement>(null);
   const footerAddr1Ref = useRef<HTMLParagraphElement>(null);
 
-  // Load Content from LocalStorage on Mount
+  // Load Content from LocalStorage on Mount / ID change
   useEffect(() => {
     const loadSharedContent = (key: string, ref: React.RefObject<HTMLElement | null>) => {
       const saved = localStorage.getItem(key);
@@ -112,14 +116,17 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
       if (savedImageBlocks) setImageBlocks(JSON.parse(savedImageBlocks));
     } catch (e) { console.error("Error loading blocks", e); }
 
+    isLoadedRef.current = true;
   }, [id]);
 
-  // Save Draggables when changed
+  // Save Draggables when changed by user (guarded by isLoadedRef to never overwrite on initial mount)
   useEffect(() => {
+    if (!isLoadedRef.current) return;
     localStorage.setItem(`tajmir_doc_draggables_text_${id}`, JSON.stringify(textBlocks));
   }, [textBlocks, id]);
 
   useEffect(() => {
+    if (!isLoadedRef.current) return;
     localStorage.setItem(`tajmir_doc_draggables_img_${id}`, JSON.stringify(imageBlocks));
   }, [imageBlocks, id]);
 
@@ -129,29 +136,53 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
 
     if (action.type === 'ADD_TEXT') {
       const newId = Date.now();
-      setTextBlocks(prev => [...prev, { id: newId, x: 50, y: 200 }]);
+      setTextBlocks(prev => {
+        const updated = [...prev, { id: newId, x: 50, y: 200 }];
+        localStorage.setItem(`tajmir_doc_draggables_text_${id}`, JSON.stringify(updated));
+        return updated;
+      });
     }
 
     if (action.type === 'ADD_IMAGE' && action.payload) {
       const newId = Date.now();
-      setImageBlocks(prev => [...prev, { id: newId, src: action.payload, x: 50, y: 200 }]);
+      setImageBlocks(prev => {
+        const updated = [...prev, { id: newId, src: action.payload, x: 50, y: 200 }];
+        localStorage.setItem(`tajmir_doc_draggables_img_${id}`, JSON.stringify(updated));
+        return updated;
+      });
     }
-  }, [action, isActive]);
+  }, [action, isActive, id]);
 
-  const removeTextBlock = (id: number) => {
-    setTextBlocks(prev => prev.filter(b => b.id !== id));
+  const removeTextBlock = (blockId: number) => {
+    setTextBlocks(prev => {
+      const updated = prev.filter(b => b.id !== blockId);
+      localStorage.setItem(`tajmir_doc_draggables_text_${id}`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
-  const removeImageBlock = (id: number) => {
-    setImageBlocks(prev => prev.filter(b => b.id !== id));
+  const removeImageBlock = (blockId: number) => {
+    setImageBlocks(prev => {
+      const updated = prev.filter(b => b.id !== blockId);
+      localStorage.setItem(`tajmir_doc_draggables_img_${id}`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
-  const handleUpdateText = (id: number, data: any) => {
-    setTextBlocks(prev => prev.map(b => b.id === id ? { ...b, ...data } : b));
+  const handleUpdateText = (blockId: number, data: any) => {
+    setTextBlocks(prev => {
+      const updated = prev.map(b => b.id === blockId ? { ...b, ...data } : b);
+      localStorage.setItem(`tajmir_doc_draggables_text_${id}`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
-  const handleUpdateImage = (id: number, data: any) => {
-    setImageBlocks(prev => prev.map(b => b.id === id ? { ...b, ...data } : b));
+  const handleUpdateImage = (blockId: number, data: any) => {
+    setImageBlocks(prev => {
+      const updated = prev.map(b => b.id === blockId ? { ...b, ...data } : b);
+      localStorage.setItem(`tajmir_doc_draggables_img_${id}`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // Helper to persist edits
@@ -211,14 +242,10 @@ export const TajmirPage = forwardRef<HTMLDivElement, TajmirPageProps>(({
       {/* ================= HEADER ================= */}
       <div className="pt-10 px-12 pb-2 relative z-10">
         <div className="flex items-center justify-end">
-          <img
-            src={LOGO_OPTIONS[logoIndex]}
-            alt="Tajmir Global Corporation"
-            style={{ height: '90px', width: 'auto' }}
-            className="object-contain cursor-pointer hover:opacity-90 transition-opacity"
-            crossOrigin="anonymous"
-            onClick={handleHeaderClick}
-            title="Click to alternate logo"
+          <TajmirLogo
+            variant={logoIndex}
+            onSwitchLogo={handleHeaderClick}
+            height={90}
           />
         </div>
       </div>
